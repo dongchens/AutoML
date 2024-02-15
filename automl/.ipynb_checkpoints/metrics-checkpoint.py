@@ -181,14 +181,19 @@ def rankplot(df, var, target, bins=10, show=False):
     Returns:
         DataFrame: DataFrame containing aggregated values for each bin.
     """
-    cuts = df[var].quantile(np.linspace(0, 1, bins + 1)).values
-    cuts[0] = float('-inf')
-    cuts[-1] = float('inf')
-    df['bucket'] = df[var].map(lambda x: _bucket(x, cuts))
+    df = df[[var, target]].copy()
+    n_values = df[var].nunique()
+    if n_values <= 2*bins:
+        df['bucket'] = df[var]
+    else:
+        cuts = df[var].quantile(np.linspace(0, 1, bins + 1)).values
+        cuts[0] = float('-inf')
+        cuts[-1] = float('inf')
+        df['bucket'] = df[var].map(lambda x: _bucket(x, cuts))
     cols = [var, target]
     rp = df.groupby(['bucket'])[cols].mean().reset_index().sort_values([var])
     if show:
-        plt.plot(rp[var], rp[target])
+        plt.plot(rp[var], rp[target], '-o')
         plt.xlabel(var)
         plt.ylabel(target)
     return rp
