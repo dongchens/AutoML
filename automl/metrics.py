@@ -211,8 +211,6 @@ def logloss(y_true, y_score, eps=1e-15):
     return -loss / len(y_true)
 
 
-import numpy as np
-
 def get_bucket(v, cutoff):
     """Return the index of the bucket for the given value.
 
