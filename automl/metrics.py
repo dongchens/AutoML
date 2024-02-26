@@ -4,51 +4,48 @@ import matplotlib.pylab as plt
 import seaborn as sns
 
 
-def bucket_value(a, func=np.sum, n=10):
+def _bucket_value(a, n):
     """Compute summary statistics in equal-size buckets.
 
     Args:
         a (array_like): Input array or DataFrame.
-        func (callable): The function to compute summary statistics.
         n (int): Number of buckets.
 
     Returns:
         list: List of summary statistics computed for each bucket.
     """
     s = round(len(a) / float(n))
-    out = [func(a[i - s:i], axis=0) for i in range(s, s * n, s)]
-    out.append(func(a[s * (n - 1):], axis=0))
+    out = [sum(a[i-s:i]) for i in range(s, s*n, s)]
+    out.append(sum(a[s*(n-1):]))
     return out
 
 
-def capture_value(a, func=np.sum, n=10):
+def _capture_value(a, n):
     """Compute cumulative value across buckets.
 
     Args:
         a (array_like): Input array or DataFrame.
-        func (callable): The function to compute cumulative value.
         n (int): Number of buckets.
 
     Returns:
         ndarray: Cumulative value across buckets.
     """
-    a_sum = bucket_value(a, func=func, n=n)
+    a_sum = _bucket_value(a, n)
     a_cum = np.cumsum(a_sum)
     return a_cum
 
 
-def capture_frac(a, func=np.sum, n=10):
+def _capture_frac(a, n):
     """Compute cumulative fraction across buckets.
 
     Args:
         a (array_like): Input array or DataFrame.
-        func (callable): The function to compute cumulative fraction.
         n (int): Number of buckets.
 
     Returns:
         ndarray: Cumulative fraction across buckets.
     """
-    a_sum = bucket_value(a, func=func, n=n)
+    a_sum = _bucket_value(a, n=n)
     a_cum = np.cumsum(a_sum)
     frac = a_cum / float(sum(a))
     return frac
@@ -67,8 +64,8 @@ def gini(y_true, y_score, n_buckets=10):
     """
     unit = [t[0] for t in sorted(zip(y_true, y_score), key=lambda t: t[1], reverse=True)]
     best = sorted(y_true, reverse=True)
-    unit_cap = capture_frac(unit, n=n_buckets)
-    best_cap = capture_frac(best, n=n_buckets)
+    unit_cap = _capture_frac(unit, n=n_buckets)
+    best_cap = _capture_frac(best, n=n_buckets)
     base = np.linspace(1. / n_buckets, 1., n_buckets)
     return sum(unit_cap - base) / sum(best_cap - base)
 
@@ -90,13 +87,16 @@ def gini_value(y_true, y_score, weight=None, n_buckets=10):
     else:
         y_value = np.array(weight) * np.array(y_true)
     sort_by_score = sorted(zip(y_true, y_score, y_value), key=lambda t: t[1], reverse=True)
-    unit_cap = capture_frac([t[0] for t in sort_by_score], n=n_buckets)
-    value_cap = capture_frac([t[2] for t in sort_by_score], n=n_buckets)
-    best_unit_cap = capture_frac(sorted(y_true, reverse=True), n=n_buckets)
-    best_value_cap = capture_frac(sorted(y_value, reverse=True), n=n_buckets)
+    unit_cap = _capture_frac([t[0] for t in sort_by_score], n=n_buckets)
+    value_cap = _capture_frac([t[2] for t in sort_by_score], n=n_buckets)
+    best_unit_cap = _capture_frac(sorted(y_true, reverse=True), n=n_buckets)
+    best_value_cap = _capture_frac(sorted(y_value, reverse=True), n=n_buckets)
     base = np.linspace(1. / n_buckets, 1., n_buckets)
     return (sum(unit_cap - base) / sum(best_unit_cap - base),
-            sum(value_cap - base) / sum(best_value_cap - base))
+            sum(value_cap - base) / sum(best_value_cap - base)
+
+
+
 
 
 def lift_table(y_true, y_score, weight=None, n_buckets=10):
@@ -115,14 +115,37 @@ def lift_table(y_true, y_score, weight=None, n_buckets=10):
         y_value = np.array(y_true)
     else:
         y_value = np.array(weight) * np.array(y_true)
+    # sort by score
     sort_by_score = sorted(zip(y_true, y_score, y_value), key=lambda t: t[1], reverse=True)
-    unit_cap = capture_value([t[0] for t in sort_by_score], n=n_buckets)
-    value_cap = capture_value([t[2] for t in sort_by_score], n=n_buckets)
-    counter = capture_value(np.ones(len(y_true)), n=n_buckets)
+    
     base = np.linspace(1. / n_buckets, 1., n_buckets)
-    lift = np.c_[base, counter, unit_cap, unit_cap / counter, unit_cap / float(sum(unit_cap)),
-                 value_cap / float(sum(value_cap))]
-    return pd.DataFrame(lift, columns=['Quantile', 'Count', 'Units', 'Rate', 'Unit %', 'Value %'])
+    sample = _bucket_value(np.ones(len(y_true)), n=n_buckets)
+    sample_cs = np.cumsum(sample)
+    unit = _bucket_value([t[0] for t in sort_by_score], n=n_buckets)
+    unit_cs = np.cumsum(unit)
+    # compute capture units and values
+    unit_bucket = _bucket_value([t[0] for t in sort_by_score], n=n_buckets)
+    unit_cap = np.cumsum(unit_bucket)/sum(unit_bucket)
+    value_bucket = _bucket_value([t[2] for t in sort_by_score], n=n_buckets)
+    value_cap = np.cumsum(value_bucket)/sum(value_bucket)
+    # compute best possible caputre units and values
+    best_unit_cap = np.cumsum(_bucket_value(sorted(y_true, reverse=True), n=n_buckets))/sum(y_true)
+    best_value_cap = np.cumsum(_bucket_value(sorted(y_value, reverse=True), n=n_buckets))/sum(y_value)
+    
+    gini = (sum(unit_cap - base) / sum(best_unit_cap - base),
+            sum(value_cap - base) / sum(best_value_cap - base))
+
+    lift = {'Quantile': base, 
+            'Sample': sample, 
+            'Unit': unit,
+            'Resp Rate': np.array(unit) / np.array(sample),
+            'Sample Cum': sample_cs,
+            'Unit Cum': unit_cs,
+            'Resp Rate Cum': np.array(unit_cs) / np.array(sample_cs), 
+            'Unit %': unit_cap,
+            'Value %': value_cap}
+    print('Gini Score: ', gini)
+    return pd.DataFrame(lift)
 
 
 
