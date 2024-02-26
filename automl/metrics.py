@@ -96,9 +96,6 @@ def gini_value(y_true, y_score, weight=None, n_buckets=10):
             sum(value_cap - base) / sum(best_value_cap - base)
 
 
-
-
-
 def lift_table(y_true, y_score, weight=None, n_buckets=10):
     """Generate a lifting table.
 
@@ -146,7 +143,6 @@ def lift_table(y_true, y_score, weight=None, n_buckets=10):
             'Value %': value_cap}
     print('Gini Score: ', gini)
     return pd.DataFrame(lift)
-
 
 
 def fpr_table(y_true, y_score, weight=None, start=1, end=10):
